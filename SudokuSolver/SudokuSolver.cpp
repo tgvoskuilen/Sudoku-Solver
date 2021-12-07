@@ -15,13 +15,13 @@
 #include <memory>
 #include <assert.h>
 
-using Entity = unsigned short;
-using Entities = std::array<Entity, 81>;
+using Entry = unsigned short;
+using Entries = std::array<Entry, 81>;
 
-constexpr Entity base_mask = (1 << 9) - 1; // 111111111
+constexpr Entry base_mask = (1 << 9) - 1; // 111111111
 
 namespace {
-    inline unsigned count_bits(Entity i) {
+    inline unsigned count_bits(Entry i) {
         assert(i <= base_mask);
         unsigned count = 0;
         while (i) {
@@ -31,14 +31,14 @@ namespace {
         return count;
     }
 
-    inline bool has_bit(Entity e, int i) {
+    inline bool has_bit(Entry e, int i) {
         assert(i < 10 && i > 0);
         assert(e <= base_mask);
-        const Entity mask = (1 << (i - 1));
+        const Entry mask = (1 << (i - 1));
         return (mask & e) > 0;
     }
 
-    inline unsigned lowest_bit(Entity i) {
+    inline unsigned lowest_bit(Entry i) {
         assert(i <= base_mask);
 
         if (i == 0) return 0;
@@ -51,27 +51,27 @@ namespace {
         return bit;
     }
 
-    inline bool has_single_value(Entity i) {
+    inline bool has_single_value(Entry i) {
         return count_bits(i) == 1;
     }
 
-    inline bool remove_values(Entity& e, Entity i) {
+    inline bool remove_values(Entry& e, Entry i) {
         assert(e <= base_mask);
         assert(i <= base_mask);
-        const Entity eold = e;
+        const Entry eold = e;
         e &= ((~i) & base_mask);
         assert(e <= base_mask);
         return e != eold;
     }
 
-    inline std::string entity_bits(Entity i) {
+    inline std::string entity_bits(Entry i) {
         std::ostringstream bits;
         std::bitset<32> y(i);
         bits << y;
         return bits.str();
     }
 
-    std::string entity_str(Entity i) {
+    std::string entity_str(Entry i) {
         std::ostringstream p;
         if (has_single_value(i)) {
             p << lowest_bit(i);
@@ -134,8 +134,6 @@ public:
     void solve() {
         int tries = 0;
         auto start = std::chrono::steady_clock::now();
-        std::ostringstream msg;
-
 
         try {
 
@@ -147,29 +145,21 @@ public:
                 }
 
                 if (rule1()) {
-                    if (!is_valid()) {
-                        revert_guess();
-                    }
+                    if (!is_valid()) revert_guess();
                     continue;
                 }
 
                 if (rule2()) {
-                    if (!is_valid()) {
-                        revert_guess();
-                    }
+                    if (!is_valid()) revert_guess();
                     continue;
                 }
 
-                //if (rule3()) {
-            //		while (!is_valid()) revert_guess();
-                //	continue;
-            //	}
+                if (rule3()) {
+                    if (!is_valid()) revert_guess();
+                	continue;
+                }
 
                 guess();
-
-                if (!is_valid()) {
-                    revert_guess();
-                }
             }
 
             auto end = std::chrono::steady_clock::now();
@@ -178,7 +168,7 @@ public:
             std::cout << "Solved " << init_ << " in " << elapsed << " ms" << std::endl;
         }
         catch (std::exception& e) {
-
+            std::ostringstream msg;
             msg << "FATAL ERROR IN SOLVE after step " << tries << " guess " << num_guesses() << std::endl;
             msg << init_ << std::endl;
             msg << e.what() << std::endl;
@@ -339,7 +329,7 @@ private:
                         // set k contains all the match ids, remove i from all the non-matched ids in set k
                         auto* begin = match_ids.data();
                         auto* end = begin + n;
-                        const Entity iVal = (1 << (i - 1));
+                        const Entry iVal = (1 << (i - 1));
 
                         for (auto ei : sets[k]) {
                             if (std::find(begin, end, ei) == end) {
@@ -383,7 +373,7 @@ private:
             throw std::runtime_error("Reached invalid state in guessing routine - nothing left to guess");
         }
 
-        const Entity guessed_entity = entries[guess_id];
+        const Entry guessed_entity = entries[guess_id];
         const unsigned guess_value = lowest_bit(guessed_entity);
 
         if (guess_value > 9) {
@@ -391,7 +381,7 @@ private:
             msg << "Got an invalid guess of " << guess_value << " from " << entity_bits(guessed_entity);
             throw std::runtime_error(msg.str());
         }
-        const Entity guess_mask = (1 << (guess_value - 1));
+        const Entry guess_mask = (1 << (guess_value - 1));
 
         guesses.push_back(entries);
         remove_values(guesses.back()[guess_id], guess_mask);
@@ -413,7 +403,7 @@ private:
 
     bool set_complete(const std::array<unsigned,9>& set) {
 
-        Entity mask = 0;
+        Entry mask = 0;
 
         for (auto ei : set) {
             if (!has_single_value(entries[ei])) {
@@ -430,8 +420,8 @@ private:
         else {
             bool valid = is_valid();
 
-            Entity expected = 0;
-            Entity actual = 0;
+            Entry expected = 0;
+            Entry actual = 0;
             int num_vals = 0;
             for (auto ei : set) {
                 if (has_single_value(entries[ei])) {
@@ -468,7 +458,7 @@ private:
     bool is_valid() {
 
         // not valid if any Entry has 0 remaining options
-        constexpr Entity zero = 0;
+        constexpr Entry zero = 0;
         for (auto e : entries) {
             if (e > base_mask) {
                 std::ostringstream msg;
@@ -483,8 +473,8 @@ private:
 
         // not valid if a set has duplicate defined options
         for (auto&& set : sets) {
-            Entity expected = 0;
-            Entity actual = 0;
+            Entry expected = 0;
+            Entry actual = 0;
             unsigned num_vals = 0;
             for (auto ei : set) {
                 if (has_single_value(entries[ei])) {
@@ -542,8 +532,8 @@ private:
     std::array<std::vector<unsigned>, 81> entity_sets{};
 
     std::string init_;
-    Entities entries;
-    std::vector<Entities> guesses;
+    Entries entries;
+    std::vector<Entries> guesses;
     unsigned num_guesses_ = 0;
     double elapsed = 0.0;
     bool solved_ = false;
