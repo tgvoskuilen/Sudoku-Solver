@@ -18,7 +18,7 @@
 using Entry = unsigned short;
 using Entries = std::array<Entry, 81>;
 
-constexpr Entry base_mask = (1 << 9) - 1; // 111111111
+constexpr Entry base_mask = 0b111111111;
 
 namespace {
     inline unsigned count_bits(Entry i) {
@@ -131,6 +131,17 @@ public:
         return p.str();
     }
 
+    void summarize() {
+        std::cout << "\nSOLVED PUZZLE:" << std::endl;
+        std::cout << to_string() << std::endl;
+
+        std::cout << " Time: " << elapsed << " ms" << std::endl;
+        std::cout << " Guesses: " << num_guesses_ << std::endl;
+        for (int i = 0; i < 5; ++i) {
+            std::cout << " Rule " << i + 1 << " ratio = " << applies_[i] << "/" << calls_[i] << std::endl;
+        }
+    }
+
     void solve() {
         int tries = 0;
         auto start = std::chrono::steady_clock::now();
@@ -156,8 +167,18 @@ public:
 
                 if (rule3()) {
                     if (!is_valid()) revert_guess();
-                	continue;
+                    continue;
                 }
+
+                if (rule4()) {
+                    if (!is_valid()) revert_guess();
+                    continue;
+                }
+
+                //if (rule5()) {
+                //    if (!is_valid()) revert_guess();
+                //    continue;
+                //}
 
                 guess();
             }
@@ -165,7 +186,7 @@ public:
             auto end = std::chrono::steady_clock::now();
             elapsed = 1e-3*std::chrono::duration_cast<std::chrono::microseconds>(end - start).count();
             solved_ = true;
-            std::cout << "Solved " << init_ << " in " << elapsed << " ms" << std::endl;
+            std::cout << "Solved " << init_ << " in " << elapsed << " ms with " << num_guesses_ << " guesses" << std::endl;
         }
         catch (std::exception& e) {
             std::ostringstream msg;
@@ -187,6 +208,9 @@ public:
 
 private:
 
+    std::array<unsigned, 6> calls_{};
+    std::array<unsigned, 6> applies_{};
+
     std::string error_ = "";
 
     bool rule1() {
@@ -207,6 +231,9 @@ private:
                 }
             }
         }
+
+        calls_[0] += 1;
+        if (changed) applies_[0] += 1;
 
         return changed;
 
@@ -238,6 +265,9 @@ private:
 
             }
         }
+
+        calls_[1] += 1;
+        if (changed) applies_[1] += 1;
 
         return changed;
     }
@@ -271,9 +301,13 @@ private:
             }
         }
 
+        calls_[2] += 1;
+        if (changed) applies_[2] += 1;
 
         return changed;
     }
+
+    std::array<Entry, 9> columns{};
 
     bool rule4() {
         /*
@@ -282,21 +316,78 @@ private:
         */
         bool changed = false;
 
-        // Too complicated to code
+        // Example:
+        //   9 8 7 6 5 4 3 2 1
+        // a 1 1 0 0 0 0 0 1 0
+        // b 0 0 1 0 0 0 0 0 0
+        // c 0 0 0 1 1 0 0 1 1
+        // d 1 1 0 0 1 0 0 0 1
+        // e 0 0 0 0 1 1 0 1 1
+        // f 0 0 0 0 0 0 1 0 0
+        // ...
+        // Transpose this into an Entry per column and search for duplicate columns.
+        // If a column with N bits is duplicated N times, the other bits in the rows occupied
+        // by those column bits can be removed
 
+
+        for (auto&& set : sets) {
+
+            std::fill(columns.begin(), columns.end(), 0);
+
+            for (int i = 0; i < 9; ++i) { // loop rows
+                const Entry e = entries[set[i]];
+
+                for (int j = 0; j < 9; ++j) { // loop bits
+                    if (has_bit(e, j + 1)) {
+                        columns[j] |= (1 << i);
+                    }
+                }
+            }
+
+            for (int i = 0; i < 9; ++i) {
+                const Entry colI = columns[i];
+                Entry row_mask = 0;
+
+                unsigned num_matches = 0;
+                for (int j = 0; j < 9; ++j) {
+                    const Entry colJ = columns[j];
+                    if (colI == colJ) {
+                        ++num_matches;
+                        row_mask |= (1 << j);
+                    }
+                }
+
+                if (num_matches > 1 && count_bits(colI) == num_matches) {
+                    for (int j = 0; j < 9; ++j) {
+                        const Entry ej = entries[set[j]];
+                        if (ej != row_mask && has_bit(colI, j + 1)) {
+                            entries[set[j]] &= row_mask;
+                            changed = true;
+                        }
+                    }
+                }
+            }
+        }
+
+        calls_[3] += 1;
+        if (changed) applies_[3] += 1;
 
         return changed;
     }
+
+    std::array<unsigned, 9> match_ids{};
 
     bool rule5() {
         /*
         If all possible spots for integer i in set J are also
         in set K, then all other instances of i from set K can
-        be eliminated
+        be eliminated.
+
+        e.g. if a "1" can only go in the first row in the top left box 
+        (positions 0 1 2) then 1s can be eliminated from all other 
+        spots in the first row (3-8)
         */
         bool changed = false;
-
-        std::array<unsigned, 27> match_ids{};
 
         // works, but is more expensive than just extra guessing
 
@@ -342,6 +433,8 @@ private:
             }
         }
 
+        calls_[4] += 1;
+        if (changed) applies_[4] += 1;
 
         return changed;
     }
@@ -586,10 +679,21 @@ bool test_archive(int max_runs) {
     double avg_time = 0.0;
     double avg_guesses = 0.0;
     int num_errs = 0;
+    int no_guess_solves = 0;
+    int max_guesses = 0;
+    double min_time = 1e12;
+    double max_time = 0.0;
+
     for (int i = 0; i < max_runs; ++i) {
         if (puzzles[i]->solved()) {
             avg_time += puzzles[i]->elapsed_time();
             avg_guesses += puzzles[i]->num_guesses();
+
+            if (puzzles[i]->num_guesses() == 0) ++no_guess_solves;
+            max_guesses = std::max(max_guesses, puzzles[i]->num_guesses());
+
+            min_time = std::min(min_time, puzzles[i]->elapsed_time());
+            max_time = std::max(max_time, puzzles[i]->elapsed_time());
         }
         else {
             ++num_errs;
@@ -599,6 +703,9 @@ bool test_archive(int max_runs) {
     avg_guesses /= max_runs;
 
     std::cout << "Solved " << max_runs << " puzzles, average time = " << avg_time << " ms, avg guesses = " << avg_guesses << std::endl;
+
+    std::cout << "  No-guess solves: " << no_guess_solves << " max guesses: " << max_guesses << std::endl;
+    std::cout << "  Min time " << min_time << " ms, max time " << max_time << " ms" << std::endl;
 
     if (num_errs > 0) {
         std::cout << "FAILED to solve " << num_errs << " puzzles:" << std::endl;
@@ -630,10 +737,109 @@ void spot_test(const std::vector<std::string>& pl) {
             //std::cout << pv[i]->init_vals << std::endl;
         }
     }
+
+    std::cout << "SUMMARY" << std::endl;
+    for (int i = 0; i < (int)pv.size(); ++i) {
+        pv[i]->summarize();
+    }
+}
+
+void check(bool arg, const std::string& msg, int& errs) {
+    if (!arg) {
+        std::cout << msg << std::endl;
+        ++errs;
+    }
+}
+
+void check_eq(unsigned a, unsigned b, const std::string& msg, int& errs) {
+    if (a != b) {
+        std::cout << msg << ": got " << a << " expected " << b << std::endl;
+        ++errs;
+    }
+}
+
+bool run_tests() {
+    std::cout << "RUNNING TEST" << std::endl;
+
+    int errs = 0;
+
+    // count_bits
+    {
+        Entry a = 0b010010001;
+        check_eq(count_bits(a), 3, "count_bits(a) == 3", errs);
+
+        a = 0b000010000;
+        check_eq(count_bits(a), 1, "count_bits(a) == 1", errs);
+
+        a = 0;
+        check_eq(count_bits(a), 0, "count_bits(a) == 0", errs);
+    }
+
+    // has_bit
+    {
+        Entry a = 0b010010001;
+        check(has_bit(a, 1), "has_bit(a,1)", errs);
+        check(!has_bit(a, 2), "!has_bit(a,2)", errs);
+        check(has_bit(a, 5), "has_bit(a,5)", errs);
+        check(has_bit(a, 8), "has_bit(a,8)", errs);
+        check(!has_bit(a, 9), "!has_bit(a,9)", errs);
+
+        a = 0;
+        check(!has_bit(a, 1), "!has_bit(0,1)", errs);
+        check(!has_bit(a, 2), "!has_bit(0,2)", errs);
+        check(!has_bit(a, 5), "!has_bit(0,5)", errs);
+        check(!has_bit(a, 8), "!has_bit(0,8)", errs);
+        check(!has_bit(a, 9), "!has_bit(0,9)", errs);
+    }
+
+
+    // lowest_bit
+    {
+        Entry a = (1 << 4) ;
+        check_eq(lowest_bit(a), 5, "lowest_bit(a) == 5", errs);
+
+        a = (1 << 4) | (1 << 7);
+        check_eq(lowest_bit(a), 5, "lowest_bit(a) == 5", errs);
+
+        a = 1;
+        check_eq(lowest_bit(a), 1, "lowest_bit(a) == 1", errs);
+
+        a = 0;
+        check_eq(lowest_bit(a), 0, "lowest_bit(a) == 0", errs);
+    }
+
+    // has_single_value
+    {
+        Entry a = 0b000010000;
+        check(has_single_value(a), "has_single_value(a)", errs);
+
+        a = 0b010010000;
+        check(!has_single_value(a), "!has_single_value(a)", errs);
+
+        a = 0;
+        check(!has_single_value(a), "!has_single_value(0)", errs);
+    }
+
+    // remove_values
+    {
+        Entry a = 0b010010000;
+        Entry b = 0b000010000;
+        Entry c = 0b010000000;
+        remove_values(a, b); // remove b from a
+        check_eq(a, c, "remove_values(a,b)", errs);
+        check_eq(count_bits(a), 1, "count_bits(a)", errs);
+        check(has_single_value(a), "has_single_value(a)", errs);
+    }
+
+    std::cout << " TESTS COMPLETE WITH " << errs << " ERRORS" << std::endl;
+
+    return errs == 0;
 }
 
 int main(int argc, char* argv[])
 {
+    if (!run_tests()) return 1;
+
     int max_runs = 10000000;
     if (argc == 2) {
         max_runs = std::atoi(argv[1]);
