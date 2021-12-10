@@ -297,20 +297,20 @@ private:
         bool changed = false;
 
         for (auto&& set : sets) {
-            for (auto ei : set) {
+            for (int i = 0; i < 9; ++i) {
 
                 // which other entries in this set have the same values as entry i
-                unsigned num_matches = 0;
-                for (auto ej : set) {
-                    if (entries[ej] == entries[ei]) {
+                unsigned num_matches = 1; // always matches itself
+                for (int j = i + 1; j < 9; ++j) {
+                    if (entries[set[j]] == entries[set[i]]) {
                         ++num_matches;
                     }
                 }
 
-                if (num_matches > 1 && count_bits(entries[ei]) == num_matches) {
-                    for (auto ej : set) {
-                        if (entries[ej] != entries[ei]) {
-                            changed |= remove_values(entries[ej], entries[ei]);
+                if (num_matches > 1 && count_bits(entries[set[i]]) == num_matches) {
+                    for (int j = 0; j < 9; ++j) {
+                        if (entries[set[j]] != entries[set[i]]) {
+                            changed |= remove_values(entries[set[j]], entries[set[i]]);
                         }
                     }
                 }
