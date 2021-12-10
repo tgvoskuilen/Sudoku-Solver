@@ -18,11 +18,16 @@
 using Entry = unsigned short;
 using Entries = std::array<Entry, 81>;
 
-constexpr Entry base_mask = 0b111111111;
+constexpr Entry base_mask = 0b0111111111;
+constexpr Entry lock_mask = 0b1000000000;
 
 namespace {
+    inline bool is_locked(const Entry& i) {
+        return (i & lock_mask) > 0;
+    }
+
     inline unsigned count_bits(Entry i) {
-        assert(i <= base_mask);
+        i &= base_mask;
         unsigned count = 0;
         while (i) {
             i &= (i - 1);
@@ -31,15 +36,13 @@ namespace {
         return count;
     }
 
-    inline bool has_bit(Entry e, int i) {
-        assert(i < 10 && i > 0);
-        assert(e <= base_mask);
+    inline bool has_bit(const Entry& e, const int& i) {
         const Entry mask = (1 << (i - 1));
         return (mask & e) > 0;
     }
 
     inline unsigned lowest_bit(Entry i) {
-        assert(i <= base_mask);
+        i &= base_mask;
 
         if (i == 0) return 0;
 
@@ -56,17 +59,22 @@ namespace {
     }
 
     inline bool remove_values(Entry& e, Entry i) {
-        assert(e <= base_mask);
-        assert(i <= base_mask);
+        if (is_locked(e)) return false;
+
+        // e = L001100010
+        // i = L000000110
+        // r = L001100000
+        // r = e & ((~i) & base)
+        //  ignore lock bit for now??
+        i &= base_mask;
         const Entry eold = e;
         e &= ((~i) & base_mask);
-        assert(e <= base_mask);
         return e != eold;
     }
 
     inline std::string entity_bits(Entry i) {
         std::ostringstream bits;
-        std::bitset<32> y(i);
+        std::bitset<10> y(i);
         bits << y;
         return bits.str();
     }
@@ -145,7 +153,7 @@ public:
     void solve() {
         int tries = 0;
         auto start = std::chrono::steady_clock::now();
-
+ 
         try {
 
             while (!puzzle_complete()) {
@@ -189,6 +197,7 @@ public:
             std::cout << "Solved " << init_ << " in " << elapsed << " ms with " << num_guesses_ << " guesses" << std::endl;
         }
         catch (std::exception& e) {
+            std::cout << "CAUGHT ERROR" << std::endl;
             std::ostringstream msg;
             msg << "FATAL ERROR IN SOLVE after step " << tries << " guess " << num_guesses() << std::endl;
             msg << init_ << std::endl;
@@ -197,6 +206,7 @@ public:
                 msg << " " << e << ": " << entity_bits(e) << std::endl;
             }
             error_ = msg.str();
+            std::cout << error_ << std::endl;
         }
     }
 
@@ -213,6 +223,7 @@ private:
 
     std::string error_ = "";
 
+
     bool rule1() {
         /*
         If an entry has a given value, that value
@@ -221,7 +232,7 @@ private:
         */
         bool changed = false;
         for (int i = 0; i < 81; ++i) {
-            if (has_single_value(entries[i])) {
+            if (!is_locked(entries[i]) && has_single_value(entries[i]) ) {
                 for (auto j : entity_sets[i]) {
                     for (auto ei : sets[j]) {
                         if (ei != i) {
@@ -229,6 +240,7 @@ private:
                         }
                     }
                 }
+                entries[i] |= lock_mask;
             }
         }
 
@@ -239,6 +251,9 @@ private:
 
     }
 
+    std::array<unsigned, 9> match_ids{};
+    std::array<unsigned, 9> match_count{};
+
     bool rule2() {
         /*
         If a set has only one location where a given number can go, it
@@ -246,23 +261,24 @@ private:
         */
         bool changed = false;
 
-        for (int i = 1; i < 10; ++i) {
-            for (auto&& set : sets) {
-                int num_matches = 0;
-                int match_id = -1;
+        for (auto&& set : sets) {
 
-                for (auto ei : set) {
-                    if (has_bit(entries[ei], i)) {
-                        ++num_matches;
-                        match_id = ei;
+            std::fill(match_count.begin(), match_count.end(), 0);
+
+            for (auto ei : set) {
+                for (int i = 0; i < 9; ++i) {
+                    if (has_bit(entries[ei], i+1)) {
+                        match_ids[i] = ei;
+                        match_count[i] += 1;
                     }
                 }
+            }
 
-                if (num_matches == 1 && !has_single_value(entries[match_id])) {
-                    entries[match_id] = (1 << (i - 1));
+            for (int i = 0; i < 9; ++i) {
+                if (match_count[i] == 1 && !has_single_value(entries[match_ids[i]]) ) {
+                    entries[match_ids[i]] = (1 << i);
                     changed = true;
                 }
-
             }
         }
 
@@ -374,8 +390,6 @@ private:
 
         return changed;
     }
-
-    std::array<unsigned, 9> match_ids{};
 
     bool rule5() {
         /*
@@ -503,7 +517,7 @@ private:
                 return false;
             }
             else {
-                mask ^= entries[ei];
+                mask ^= (entries[ei] & base_mask);
             }
         }
 
@@ -553,13 +567,13 @@ private:
         // not valid if any Entry has 0 remaining options
         constexpr Entry zero = 0;
         for (auto e : entries) {
-            if (e > base_mask) {
+            if (e > (lock_mask | base_mask)) {
                 std::ostringstream msg;
                 msg << "Value exceeded base " << e << " " << entity_bits(e) << std::endl;
                 throw std::runtime_error(msg.str());
             }
 
-            if (e == zero) {
+            if ((e & base_mask) == zero) {
                 return false;
             }
         }
@@ -571,8 +585,8 @@ private:
             unsigned num_vals = 0;
             for (auto ei : set) {
                 if (has_single_value(entries[ei])) {
-                    expected |= entries[ei];
-                    actual ^= entries[ei];
+                    expected |= (entries[ei] & base_mask);
+                    actual ^= (entries[ei] & base_mask);
                     ++num_vals;
                 }
             }
@@ -627,6 +641,7 @@ private:
     std::string init_;
     Entries entries;
     std::vector<Entries> guesses;
+
     unsigned num_guesses_ = 0;
     double elapsed = 0.0;
     bool solved_ = false;
@@ -738,10 +753,10 @@ void spot_test(const std::vector<std::string>& pl) {
         }
     }
 
-    std::cout << "SUMMARY" << std::endl;
-    for (int i = 0; i < (int)pv.size(); ++i) {
-        pv[i]->summarize();
-    }
+    //std::cout << "SUMMARY" << std::endl;
+    //for (int i = 0; i < (int)pv.size(); ++i) {
+    //    pv[i]->summarize();
+    //}
 }
 
 void check(bool arg, const std::string& msg, int& errs) {
@@ -838,6 +853,27 @@ bool run_tests() {
 
 int main(int argc, char* argv[])
 {
+    Entry a = 0b001101;
+    Entry b = 0b010101;
+    Entry c = 0b100000;
+    Entry d = 0b000110;
+
+    Entry base =  a ^ b ^ c ^ d;
+    std::cout << "base " << entity_bits(base) << std::endl;
+    //base = base ^ a; // base = a = 001101
+    // base      001101
+    // b         010101
+    // ~b        101010
+    // 
+    // base & b  000101
+    // base ^ b  011000
+    // base ^ ~b 100111
+    //
+    // want      011000
+    // ans ^= c  111000
+    // d         000110
+
+
     if (!run_tests()) return 1;
 
     int max_runs = 10000000;
