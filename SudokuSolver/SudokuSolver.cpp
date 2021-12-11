@@ -8,7 +8,7 @@
 #include <fstream>
 #include <memory>
 #include <assert.h>
-
+#include <algorithm>
 
 
 std::vector<std::unique_ptr<Puzzle>> read_puzzles() {
@@ -55,6 +55,8 @@ bool test_archive(int max_runs) {
         }
     }
 
+
+
     double avg_time = 0.0;
     double avg_guesses = 0.0;
     int num_errs = 0;
@@ -81,10 +83,33 @@ bool test_archive(int max_runs) {
     avg_time /= max_runs;
     avg_guesses /= max_runs;
 
+
+
     std::cout << "Solved " << max_runs << " puzzles, average time = " << avg_time << " ms, avg guesses = " << avg_guesses << std::endl;
 
     std::cout << "  No-guess solves: " << no_guess_solves << " max guesses: " << max_guesses << std::endl;
     std::cout << "  Min time " << min_time << " ms, max time " << max_time << " ms" << std::endl;
+
+    // sort by num guesses
+    std::sort(puzzles.begin(), puzzles.end(), [](const auto& lhs, const auto& rhs) {
+        return lhs->num_guesses() < rhs->num_guesses();
+        });
+
+    std::cout << "10 hardest puzzles by guess count" << std::endl;
+    for (int i = 0; i < 10; ++i) {
+        std::cout << puzzles[i]->to_code() << ": " << puzzles[i]->num_guesses() << " guesses" << std::endl;
+    }
+
+    // sort by time
+    std::sort(puzzles.begin(), puzzles.end(), [](const auto& lhs, const auto& rhs) {
+        return lhs->elapsed_time() < rhs->elapsed_time();
+        });
+
+    std::cout << "10 hardest puzzles by solve time" << std::endl;
+    for (int i = 0; i < 10; ++i) {
+        std::cout << puzzles[i]->to_code() << ": " << puzzles[i]->elapsed_time() << " ms" << std::endl;
+    }
+
 
     if (num_errs > 0) {
         std::cout << "FAILED to solve " << num_errs << " puzzles:" << std::endl;
@@ -114,6 +139,7 @@ void spot_test(const std::vector<std::string>& pl) {
     //    pv[i]->summarize();
     //}
 }
+
 
 
 int main(int argc, char* argv[])

@@ -83,6 +83,7 @@ namespace {
     }
 }
 
+
 //===============================================================================
 Puzzle::Puzzle(const std::string& init) : init_(init) {
     if (init.size() != 81) {
@@ -90,17 +91,15 @@ Puzzle::Puzzle(const std::string& init) : init_(init) {
     }
 
     for (int i = 0; i < 81; ++i) {
-        char c = init[i];
-        unsigned long j = std::atoi(&c);
+        std::string c = init.substr(i, 1);
+        unsigned long j = std::atoi(c.c_str());
         if (j > 0) {
             entries[i] = (1 << (j - 1));
         }
         else {
-            entries[i] = (1 << 9) - 1;
+            entries[i] = base_mask;
         }
     }
-
-    init_arrays();
 }
 
 //===============================================================================
@@ -240,6 +239,9 @@ bool Puzzle::rule1() {
     If an entry has a given value, that value
     can be eliminated from all other entries in the
     sets that entry belongs to
+
+    Once this is called on an entry it can be locked and skipped for
+    future calls
     */
     bool changed = false;
     for (int i = 0; i < 81; ++i) {
@@ -406,7 +408,7 @@ bool Puzzle::rule5() {
 
     e.g. if a "1" can only go in the first row in the top left box
     (positions 0 1 2) then 1s can be eliminated from all other
-    spots in the first row (3-8)
+    spots in the first row (positions 3-8)
     */
     bool changed = false;
 
@@ -418,7 +420,7 @@ bool Puzzle::rule5() {
 
             // entry ids in sets[j] that contain value i
             for (auto ei : sets[j]) {
-                if (has_bit(entries[ei], i)) {// && !has_single_value(entries[ei])) {
+                if (has_bit(entries[ei], i)) {
                     match_ids[n++] = ei;
                 }
             }
@@ -472,8 +474,6 @@ void Puzzle::guess() {
     unsigned min_bits = 100;
     int guess_id = -1;
 
-    // TODO: pick with minimum guesses that has maximum elimination of other candidates
-
     for (int i = 0; i < 81; ++i) {
         if (!has_single_value(entries[i])) {
             const unsigned num_options = count_bits(entries[i]);
@@ -514,6 +514,10 @@ void Puzzle::revert_guess() {
 
 //===============================================================================
 bool Puzzle::set_complete(const std::array<unsigned, 9>& set) const {
+    /*
+    Check if a set is complete (has a single value in each entry)
+    throw if it is complete but invalid.
+    */
 
     Entry mask = 0;
 
@@ -539,6 +543,7 @@ bool Puzzle::set_complete(const std::array<unsigned, 9>& set) const {
 
 //===============================================================================
 bool Puzzle::puzzle_complete() const {
+    // Check if the puzzle is complete (all sets complete)
     for (auto&& set : sets) {
         if (!set_complete(set)) {
             return false;
@@ -549,6 +554,10 @@ bool Puzzle::puzzle_complete() const {
 
 //===============================================================================
 bool Puzzle::is_valid() const {
+    /*
+    Check if the puzzle is still in a valid state. Examples of an invalid
+    state would be entries with no choices left, or duplicate entries in a set.
+    */
 
     // not valid if any Entry has 0 remaining options
     constexpr Entry zero = 0;
@@ -561,58 +570,24 @@ bool Puzzle::is_valid() const {
     // not valid if a set has duplicate defined options
     for (auto&& set : sets) {
         Entry expected = 0;
-        Entry actual = 0;
-        unsigned num_vals = 0;
+        bool errs = false;
         for (auto ei : set) {
             if (has_single_value(entries[ei])) {
+                errs |= (expected & (entries[ei] & base_mask)) > 0;
+                if (errs) break;
                 expected |= (entries[ei] & base_mask);
-                actual ^= (entries[ei] & base_mask);
-                ++num_vals;
             }
         }
 
-        const bool count_mismatch = num_vals != count_bits(expected);
+        //const bool count_mismatch = num_vals != count_bits(expected);
 
-        if (expected != actual || count_mismatch) {
+        if (errs) {
+            //std::cout << "FOUND ERRS" << std::endl << to_string() << std::endl;
             return false;
         }
     }
 
     return true;
-}
-
-//===============================================================================
-void Puzzle::init_arrays() {
-
-    int k = 0;
-
-    for (int i = 0; i < 9; ++i) {
-        std::array<unsigned, 9> s{};
-        for (int j = 0; j < 9; ++j) s[j] = 9 * i + j;
-        sets.push_back(s);
-    }
-
-    for (int i = 0; i < 9; ++i) {
-        std::array<unsigned, 9> s{};
-        for (int j = 0; j < 9; ++j) s[j] = 9 * j + i;
-        sets.push_back(s);
-    }
-
-    for (int i = 0; i < 9; i += 3) {
-        for (int j = 0; j < 9; j += 3) {
-            unsigned ib = 9 * i + j;
-            sets.push_back({ ib, ib + 1, ib + 2, ib + 9, ib + 10, ib + 11, ib + 18, ib + 19, ib + 20 });
-        }
-    }
-
-    for (int i = 0; i < 81; ++i) {
-        for (int j = 0; j < 27; ++j) {
-            if (std::find(sets[j].begin(), sets[j].end(), i) != sets[j].end()) {
-                entity_sets[i].push_back(j);
-            }
-        }
-    }
-
 }
 
 //===============================================================================
