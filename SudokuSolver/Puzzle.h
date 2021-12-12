@@ -7,22 +7,30 @@
 using Entry = unsigned short;
 using Entries = std::array<Entry,81>;
 
+constexpr Entry base_mask = 0b0111111111;
+constexpr Entry lock_mask = 0b1000000000;
+
 class Puzzle {
 public:
-    Puzzle(const std::string& init);
+    Puzzle(const std::string& init, bool quiet = false);
     Puzzle(const Puzzle& p) = delete;
     Puzzle& operator=(const Puzzle& p) = delete;
 
-    std::string to_string() const;
     void summarize() const;
     void solve();
+    void solve_recurse();
 
     bool solved() const { return solved_; }
     double elapsed_time() const { return elapsed; }
-    std::string to_code() const { return init_; }
+    std::string initial_state() const { return init_; }
     int num_guesses() const { return num_guesses_; }
 
+    friend std::ostream& operator<<(std::ostream& os, const Puzzle& p);
+
 private:
+    void print(std::ostream& os) const;
+
+    bool recurse(Entries values);
     bool rule1();
     bool rule2();
     bool rule3();
@@ -47,6 +55,7 @@ private:
     unsigned num_guesses_ = 0;
     double elapsed = 0.0;
     bool solved_ = false;
+    const bool quiet_ = false;
 
     static constexpr std::array<std::array<unsigned, 3>, 81> entity_sets = { {
         { 0, 9,18}, { 0,10,18}, { 0,11,18},
@@ -90,11 +99,9 @@ private:
         { 0, 1, 2,  3, 4, 5,  6, 7, 8}, // 0
         { 9,10,11, 12,13,14, 15,16,17},
         {18,19,20, 21,22,23, 24,25,26},
-
         {27,28,29, 30,31,32, 33,34,35},
         {36,37,38, 39,40,41, 42,43,44},
         {45,46,47, 48,49,50, 51,52,53},
-
         {54,55,56, 57,58,59, 60,61,62},
         {63,64,65, 66,67,68, 69,70,71},
         {72,73,74, 75,76,77, 78,79,80},
@@ -120,3 +127,5 @@ private:
         {60,61,62, 69,70,71, 78,79,80}
     }};
 };
+
+std::ostream& operator<<(std::ostream& os, const Puzzle& p);

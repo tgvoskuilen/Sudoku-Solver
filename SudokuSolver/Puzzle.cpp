@@ -1,5 +1,6 @@
 
 #include "Puzzle.h"
+#include "bit_ops.h"
 #include <stdexcept>
 #include <bitset>
 #include <sstream>
@@ -8,84 +9,8 @@
 #include <iostream>
 #include <assert.h>
 
-constexpr Entry base_mask = 0b0111111111;
-constexpr Entry lock_mask = 0b1000000000;
-
-
-namespace {
-    inline bool is_locked(const Entry& i) {
-        return (i & lock_mask) > 0;
-    }
-
-    inline unsigned count_bits(Entry i) {
-        i &= base_mask;
-        unsigned count = 0;
-        while (i) {
-            i &= (i - 1);
-            ++count;
-        }
-        return count;
-    }
-
-    inline bool has_bit(const Entry& e, const int& i) {
-        const Entry mask = (1 << (i - 1));
-        return (mask & e) > 0;
-    }
-
-    inline unsigned lowest_bit(Entry i) {
-        i &= base_mask;
-
-        if (i == 0) return 0;
-
-        unsigned bit = 1;
-        while ((i & 1) == 0) {
-            i = (i >> 1);
-            ++bit;
-        }
-        return bit;
-    }
-
-    inline bool has_single_value(Entry i) {
-        return count_bits(i) == 1;
-    }
-
-    inline bool remove_values(Entry& e, Entry i) {
-        if (is_locked(e)) return false;
-
-        // e = L001100010
-        // i = L000000110
-        // r = L001100000
-        // r = e & ((~i) & base)
-        //  ignore lock bit for now??
-        i &= base_mask;
-        const Entry eold = e;
-        e &= ((~i) & base_mask);
-        return e != eold;
-    }
-
-    inline std::string entity_bits(Entry i) {
-        std::ostringstream bits;
-        std::bitset<10> y(i);
-        bits << y;
-        return bits.str();
-    }
-
-    std::string entity_str(Entry i) {
-        std::ostringstream p;
-        if (has_single_value(i)) {
-            p << lowest_bit(i);
-        }
-        else {
-            p << "_";
-        }
-
-        return p.str();
-    }
-}
-
-
 //===============================================================================
-Puzzle::Puzzle(const std::string& init) : init_(init) {
+Puzzle::Puzzle(const std::string& init, bool quiet) : init_(init), quiet_(quiet) {
     if (init.size() != 81) {
         throw std::runtime_error("Invalid puzzle size");
     }
@@ -103,14 +28,17 @@ Puzzle::Puzzle(const std::string& init) : init_(init) {
 }
 
 //===============================================================================
-std::string Puzzle::to_string() const {
-    std::ostringstream p;
+std::ostream& operator<<(std::ostream& os, const Puzzle& p) {
+    p.print(os);
+    return os;
+}
+
+//===============================================================================
+void Puzzle::print(std::ostream& p) const {
 
     p << "++=======+=======+=======++=======+=======+=======++=======+=======+=======++\n";
 
     for (int i = 0; i < 9; ++i) {
-
-
         for (int sr = 0; sr < 3; ++sr) {
             p << "||";
             for (int j = 0; j < 9; ++j) {
@@ -118,7 +46,6 @@ std::string Puzzle::to_string() const {
                 const Entry e = entries[idx];
                 bool has_val = has_single_value(e);
                 unsigned val = lowest_bit(e);
-
 
                 for (int sc = 0; sc < 3; ++sc) {
                     const int opt = 3 * sr + sc + 1;
@@ -158,14 +85,12 @@ std::string Puzzle::to_string() const {
             p << "++\033[90m-------+-------+-------\033[0m++\033[90m-------+-------+-------\033[0m++\033[90m-------+-------+-------\033[0m++\n";
         }
     }
-
-    return p.str();
 }
 
 //===============================================================================
 void Puzzle::summarize() const {
     std::cout << "\nSOLVED PUZZLE:" << std::endl;
-    std::cout << to_string() << std::endl;
+    std::cout << *this << std::endl;
 
     std::cout << " Time: " << elapsed << " ms" << std::endl;
     std::cout << " Guesses: " << num_guesses_ << std::endl;
@@ -175,11 +100,81 @@ void Puzzle::summarize() const {
 }
 
 //===============================================================================
+void Puzzle::solve_recurse() {
+    /*
+    Works, but is quite a bit slower than the rule-based solve
+
+    From the 50k puzzle test the average is 300x slower than the rule-based solve,
+    with a peak time of about 10 seconds vs 30 ms.
+
+    */
+    auto start = std::chrono::steady_clock::now();
+    solved_ = recurse(entries);
+    auto end = std::chrono::steady_clock::now();
+    if (solved_) {
+        elapsed = 1e-3 * std::chrono::duration_cast<std::chrono::microseconds>(end - start).count();
+        if( !quiet_ ) std::cout << "Solved " << init_ << " in " << elapsed << " ms " << std::endl;
+    }
+    else {
+        if (!quiet_) std::cout << "FAILED TO SOLVE BY RECURSION" << std::endl;
+    }
+}
+
+//===============================================================================
+bool Puzzle::recurse(Entries values) {
+
+    // update eliminations
+    for (int i = 0; i < 81; ++i) {
+        if (has_single_value(values[i])) {
+            for (auto j : entity_sets[i]) {
+                for (auto ei : sets[j]) {
+                    if (ei != i) {
+                        remove_values(values[ei], values[i]);
+                    }
+                }
+            }
+        }
+    }
+
+    // Find a non-assigned entry (one with minimum number of options)
+    unsigned min_bits = 100;
+    int next = -1;
+
+    for (int i = 0; i < 81; ++i) {
+        if (!has_single_value(values[i])) {
+            const unsigned num_options = count_bits(values[i]);
+            if (num_options < min_bits) {
+                min_bits = num_options;
+                next = i;
+            }
+        }
+    }
+
+    if (next < 0) {
+        entries = values;
+        return true;
+    }
+
+    // Set a guess for that value
+    const Entry val = values[next];
+
+    for (int i = 0; i < 9; ++i) {
+        if (!has_bit(val, i + 1)) continue;
+
+        values[next] = (1 << i);
+
+        if (recurse(values)) {
+            return true;
+        }
+    }
+
+    return false;
+}
+
+//===============================================================================
 void Puzzle::solve() {
     int tries = 0;
     auto start = std::chrono::steady_clock::now();
-
-    rule1();
 
     try {
 
@@ -221,15 +216,15 @@ void Puzzle::solve() {
         auto end = std::chrono::steady_clock::now();
         elapsed = 1e-3 * std::chrono::duration_cast<std::chrono::microseconds>(end - start).count();
         solved_ = true;
-        std::cout << "Solved " << init_ << " in " << elapsed << " ms with " << num_guesses_ << " guesses" << std::endl;
+        if (!quiet_) std::cout << "Solved " << init_ << " in " << elapsed << " ms with " << num_guesses_ << " guesses" << std::endl;
     }
     catch (std::exception& e) {
         std::ostringstream msg;
         msg << "FATAL ERROR IN SOLVE after step " << tries << " guess " << num_guesses() << std::endl;
         msg << init_ << std::endl;
         msg << e.what() << std::endl;
-        msg << to_string() << std::endl;
-        std::cout << msg.str() << std::endl;
+        msg << *this << std::endl;
+        if (!quiet_) std::cout << msg.str() << std::endl;
     }
 }
 
@@ -535,7 +530,8 @@ bool Puzzle::set_complete(const std::array<unsigned, 9>& set) const {
     }
     else {
         std::stringstream msg;
-        msg << "Puzzle has entered an invalid state" << std::endl << to_string() << std::endl;
+        msg << "Puzzle has entered an invalid state" << std::endl;
+        msg << *this << std::endl;
         throw std::runtime_error(msg.str());
     }
 
@@ -573,17 +569,9 @@ bool Puzzle::is_valid() const {
         bool errs = false;
         for (auto ei : set) {
             if (has_single_value(entries[ei])) {
-                errs |= (expected & (entries[ei] & base_mask)) > 0;
-                if (errs) break;
+                if ((expected & (entries[ei] & base_mask)) > 0) return false;
                 expected |= (entries[ei] & base_mask);
             }
-        }
-
-        //const bool count_mismatch = num_vals != count_bits(expected);
-
-        if (errs) {
-            //std::cout << "FOUND ERRS" << std::endl << to_string() << std::endl;
-            return false;
         }
     }
 

@@ -48,7 +48,7 @@ bool test_archive(int max_runs) {
     max_runs = std::min(max_runs, (int)puzzles.size());
 
     for (int i = 0; i < max_runs; ++i) {
-        puzzles[i]->solve();
+        puzzles[i]->solve_recurse();
         if (!puzzles[i]->solved()) {
             max_runs = i+1;
             break;
@@ -92,22 +92,22 @@ bool test_archive(int max_runs) {
 
     // sort by num guesses
     std::sort(puzzles.begin(), puzzles.end(), [](const auto& lhs, const auto& rhs) {
-        return lhs->num_guesses() < rhs->num_guesses();
+        return lhs->num_guesses() > rhs->num_guesses();
         });
 
     std::cout << "10 hardest puzzles by guess count" << std::endl;
     for (int i = 0; i < 10; ++i) {
-        std::cout << puzzles[i]->to_code() << ": " << puzzles[i]->num_guesses() << " guesses" << std::endl;
+        std::cout << puzzles[i]->initial_state() << ": " << puzzles[i]->num_guesses() << " guesses" << std::endl;
     }
 
     // sort by time
     std::sort(puzzles.begin(), puzzles.end(), [](const auto& lhs, const auto& rhs) {
-        return lhs->elapsed_time() < rhs->elapsed_time();
+        return lhs->elapsed_time() > rhs->elapsed_time();
         });
 
     std::cout << "10 hardest puzzles by solve time" << std::endl;
     for (int i = 0; i < 10; ++i) {
-        std::cout << puzzles[i]->to_code() << ": " << puzzles[i]->elapsed_time() << " ms" << std::endl;
+        std::cout << puzzles[i]->initial_state() << ": " << puzzles[i]->elapsed_time() << " ms" << std::endl;
     }
 
 
@@ -115,7 +115,7 @@ bool test_archive(int max_runs) {
         std::cout << "FAILED to solve " << num_errs << " puzzles:" << std::endl;
         for (int i = 0; i < max_runs; ++i) {
             if (!puzzles[i]->solved()) {
-                std::cout << puzzles[i]->to_code() << std::endl;
+                std::cout << puzzles[i]->initial_state() << std::endl;
             }
         }
     }
@@ -131,7 +131,7 @@ void spot_test(const std::vector<std::string>& pl) {
     
     for (int i = 0; i < (int)pv.size(); ++i) {
         //std::cout << pv[i]->to_string() << std::endl;
-        pv[i]->solve();
+        pv[i]->solve_recurse();
     }
 
     //std::cout << "SUMMARY" << std::endl;
