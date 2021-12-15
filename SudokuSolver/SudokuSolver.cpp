@@ -48,7 +48,7 @@ bool test_archive(int max_runs) {
     max_runs = std::min(max_runs, (int)puzzles.size());
 
     for (int i = 0; i < max_runs; ++i) {
-        puzzles[i]->solve_recurse();
+        puzzles[i]->solve();
         if (!puzzles[i]->solved()) {
             max_runs = i+1;
             break;
@@ -131,7 +131,7 @@ void spot_test(const std::vector<std::string>& pl) {
     
     for (int i = 0; i < (int)pv.size(); ++i) {
         //std::cout << pv[i]->to_string() << std::endl;
-        pv[i]->solve_recurse();
+        pv[i]->solve();
     }
 
     //std::cout << "SUMMARY" << std::endl;

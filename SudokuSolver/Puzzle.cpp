@@ -397,19 +397,36 @@ bool Puzzle::rule4() {
 //===============================================================================
 bool Puzzle::rule5() {
     /*
-    If all possible spots for integer i in (box) set J are also
-    in (row/col) set K, then all other instances of i from set K can
+    If all possible spots for integer i in set J are also
+    in set K, then all other instances of i from set K can
     be eliminated.
 
-    e.g. if a "1" can only go in the first row in the top left box
+    e.g. #1 if a "1" can only go in the first row in the top left box
     (positions 0 1 2) then 1s can be eliminated from all other
     spots in the first row (positions 3-8)
+
+    e.g. #2
+
+     . . *
+     . . *
+     . . *
+     -----
+     . . *
+     . . *
+     . . *
+     -----
+     . . *
+     . 6 6
+     . 6 6
+
+     if the only 6s in the * column are the bottom two, the other two
+     6s from that box can be eliminated
+
     */
     bool changed = false;
 
-
-    for (int j = 18; j < 27; ++j) { // loop only box sets
-        for (int i = 1; i < 10; ++i) {
+    for (int i = 1; i < 10; ++i) {
+        for (int j = 0; j < 27; ++j) { 
 
             int n = 0;
 
@@ -421,22 +438,41 @@ bool Puzzle::rule5() {
             }
 
             if (n > 1) {
-                // check if all the matches are in the same row or column
-                const unsigned row = match_ids[0] / 9;
-                const unsigned col = match_ids[0] % 9;
+                const bool setJIsBox = j >= 18;
+                int k = -1;
 
-                int row_set = row;
-                int col_set = 9 + col;
+                if (setJIsBox) {
 
-                for (int m = 1; m < n; ++m) {
-                    if (match_ids[m] / 9 != row) row_set = -1;
-                    if (match_ids[m] % 9 != col) col_set = -1;
+                    // check if all the matches are in the same row or column
+                    const unsigned row = match_ids[0] / 9;
+                    const unsigned col = match_ids[0] % 9;
+
+                    int row_set = row;
+                    int col_set = 9 + col;
+
+                    for (int m = 1; m < n; ++m) {
+                        if (match_ids[m] / 9 != row) row_set = -1;
+                        if (match_ids[m] % 9 != col) col_set = -1;
+                    }
+
+                    k = (row_set >= 0) ? row_set : col_set;
+                }
+                else {
+                    // setJ is a row or column set
+                    // check if all the match_ids are in the same box
+                    const unsigned box = entry_box_id(match_ids[0]);
+
+                    int box_set = box + 18;
+
+                    for (int m = 1; m < n; ++m) {
+                        if (entry_box_id(match_ids[m]) != box) box_set = -1;
+                    }
+
+                    k = box_set;
                 }
 
-                const int k = (row_set >= 0) ? row_set : col_set;
-
                 if (k >= 0) {
-                    // set k (row or column) contains all the match ids, remove i from all the non-matched ids in set k
+                    // set k contains all the match ids, remove i from all the non-matched ids in set k
                     auto* begin = match_ids.data();
                     auto* end = begin + n;
                     const Entry iVal = (1 << (i - 1));

@@ -69,3 +69,10 @@ inline std::string entity_str(Entry i) {
 
     return p.str();
 }
+
+inline unsigned entry_box_id(unsigned i) {
+    const unsigned box_col = (i % 9) / 3;
+    const unsigned box_row = i / 27;
+    return 3 * box_row + box_col;
+}
+
